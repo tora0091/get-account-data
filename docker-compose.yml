@@ -1,0 +1,52 @@
+version: "3"
+
+services:
+    # Go
+    golang:
+        image: golang:1.13
+        tty: true
+        volumes:
+            - ./src:/go/src
+        working_dir: /go/src
+        env_file:
+            .env
+
+    # Spanner
+    spanner:
+        image: gcr.io/cloud-spanner-emulator/emulator
+        ports:
+            - "9010:9010"
+            - "9020:9020"
+
+    # Create Instance
+    gcloud-spanner-init:
+        image: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+        command: >
+            bash -c 'gcloud config configurations create emulator ||
+              gcloud config set auth/disable_credentials true &&
+              gcloud config set project $${PROJECT_ID} &&
+              gcloud config set api_endpoint_overrides/spanner $${SPANNER_EMULATOR_URL} &&
+              gcloud config set auth/disable_credentials true &&
+              gcloud spanner instances create $${INSTANCE_NAME} --config=emulator-config --description=Emulator --nodes=1 &&
+              gcloud spanner databases create $${DATABASE_NAME} --instance=$${INSTANCE_NAME} --ddl="
+              create table $${TABLE_NAME} (
+                  property_id int64 NOT NULL,
+                  plan_id int64 NOT NULL,
+                  category_id int64 NOT NULL,
+                  price int64 NOT NULL,
+                  name string(128) NOT NULL,
+                  start_date date NOT NULL,
+                  end_date date NOT NULL,
+                  section int64 NOT NULL
+              ) primary key (property_id, category_id, start_date);
+              create index $${INDEX_NAME} on $${TABLE_NAME} (plan_id, start_date);"
+              '
+        env_file:
+            .env
+
+    # Spanner CLI
+    spanner-cli:
+        image: sjdaws/spanner-cli:latest
+        env_file:
+            .env
+        command: ['sh', '-c', 'echo this container keep running && tail -f /dev/null']
